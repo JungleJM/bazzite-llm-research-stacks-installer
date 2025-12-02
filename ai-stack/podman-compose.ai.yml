@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  localai-cpu:
+    image: localai/localai:latest
+    container_name: localai-cpu
+    restart: unless-stopped
+    environment:
+      - LOCALAI_MODELS_PATH=/models
+      - LOCALAI_OPENAI_COMPATIBLE=true
+      - LOCALAI_HOST=0.0.0.0
+      - LOCALAI_PORT=8081
+      - LOCALAI_FORCE_META_BACKEND_CAPABILITY=default
+    volumes:
+      - /mnt/thinktank/models:/models:z
+    ports:
+      - "8081:8081"
+    networks:
+      - ai_net
+
+  localai-vulkan:
+    image: localai/localai:latest-gpu-vulkan
+    container_name: localai-vulkan
+    restart: unless-stopped
+    environment:
+      - LOCALAI_MODELS_PATH=/models
+      - LOCALAI_OPENAI_COMPATIBLE=true
+      - LOCALAI_HOST=0.0.0.0
+      - LOCALAI_PORT=8080
+    volumes:
+      - /mnt/thinktank/models:/models:z
+    devices:
+      - /dev/dri:/dev/dri
+    ports:
+      - "8080:8080"
+    networks:
+      - ai_net
+
+  litellm:
+    image: ghcr.io/berriai/litellm-proxy:latest
+    container_name: litellm
+    restart: unless-stopped
+    environment:
+      - LITELLM_CONFIG=/config/config.yaml
+    volumes:
+      - /mnt/thinktank/research-stack/litellm-config:/config:ro,z
+    ports:
+      - "4000:4000"
+    networks:
+      - ai_net
+
+  openwebui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: openwebui
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_BASE=http://litellm:4000/v1
+      - OPENAI_API_KEY=dummy-key
+    volumes:
+      - /mnt/thinktank/openwebui-data:/app/backend/data:z
+    ports:
+      - "3000:8080"
+    depends_on:
+      - litellm
+    networks:
+      - ai_net
+
+networks:
+  ai_net:
+    driver: bridge

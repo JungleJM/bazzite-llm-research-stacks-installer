@@ -1,0 +1,18 @@
+model_list:
+  - model_name: qwen2.5-coder-gpu
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_base: http://localai-vulkan:8080/v1
+      api_key: dummy
+      api_type: openai_compatible
+
+  - model_name: qwen2.5-coder-cpu
+    litellm_params:
+      model: openai/gpt-4.1-mini-cpu
+      api_base: http://localai-cpu:8081/v1
+      api_key: dummy
+      api_type: openai_compatible
+
+litellm_settings:
+  host: 0.0.0.0
+  port: 4000

@@ -1,0 +1,142 @@
+version: "3.9"
+
+services:
+  postgres-research:
+    image: postgres:16
+    container_name: postgres-research
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: research
+      POSTGRES_USER: researcher
+      POSTGRES_PASSWORD: ${POSTGRESPASSWORD}
+    volumes:
+      - /mnt/thinktank/research-stack/db-postgres-r:/var/lib/postgresql/data:z
+    networks:
+      - research_net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U researcher
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres-python:
+    image: postgres:16
+    container_name: postgres-python
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: python
+      POSTGRES_USER: pyuser
+      POSTGRES_PASSWORD: ${PYTHONPOSTGRESPASSWORD}
+    volumes:
+      - /mnt/thinktank/research-stack/db-postgres-py:/var/lib/postgresql/data:z
+    networks:
+      - research_net
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U pyuser
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rstudio:
+    image: rocker/tidyverse:latest
+    container_name: rstudio
+    restart: unless-stopped
+    environment:
+      - PASSWORD=${RSTUDIOPASSWORD}
+      - ROOT=true
+      - ADD=shiny
+      - POSTGRESHOST=postgres-research
+      - POSTGRESDB=research
+      - POSTGRESUSER=researcher
+      - POSTGRESPASSWORD=${POSTGRESPASSWORD}
+      - LITELLMAPIBASE=http://litellm:4000
+      - LITELLMAPIKEY=${LITELLMMASTERKEY}
+      - USERID=1000
+      - GROUPID=1000
+    ports:
+      - "8787:8787"
+    volumes:
+      - /mnt/thinktank/research-stack/rstudio-home:/mnt/rstudio:z
+      - /mnt/thinktank/research-stack/shared:/mnt/shared:z
+      - /mnt/thinktank/research-stack/notebooks:/mnt/notebooks:z
+      - /mnt/thinktank/research-stack/research-files:/mnt/research-files:z
+    networks:
+      - research_net
+    depends_on:
+      postgres-research:
+        condition: service_healthy
+
+  jupyterlab:
+    image: jupyter/datascience-notebook:latest
+    container_name: jupyterlab
+    restart: unless-stopped
+    environment:
+      JUPYTER_TOKEN: ${JUPYTERTOKEN}
+      POSTGRESHOST: postgres-python
+      POSTGRESDB: python
+      POSTGRESUSER: pyuser
+      POSTGRESPASSWORD: ${PYTHONPOSTGRESPASSWORD}
+      LITELLMAPIBASE: http://litellm:4000
+      LITELLMAPIKEY: ${LITELLMMASTERKEY}
+    ports:
+      - "8888:8888"
+    user: root
+    volumes:
+      - /mnt/thinktank/research-stack/jupyter-home:/home/jovyan:z
+      - /mnt/thinktank/research-stack/shared:/mnt/shared:z
+      - /mnt/thinktank/research-stack/notebooks:/mnt/notebooks:z
+      - /mnt/thinktank/research-stack/research-files:/mnt/research-files:z
+    networks:
+      - research_net
+    depends_on:
+      postgres-python:
+        condition: service_healthy
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMINEMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMINPASSWORD}
+    volumes:
+      - /mnt/thinktank/research-stack/pgadmin:/var/lib/pgadmin:z
+    networks:
+      - research_net
+
+  paperqa:
+    image: python:3.12-slim
+    container_name: paperqa2
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "
+      pip install --no-cache-dir 'paper-qa[all]' &&
+      python -m paperqa.server
+      "
+    environment:
+      - PQA_LLM_API_BASE=http://litellm:4000/v1
+      - PQA_LLM_API_KEY=${LITELLMMASTERKEY}
+      - PQA_VECTOR_DIR=/vector-store
+      - PQA_PDF_DIR=/zotero-pdfs
+    volumes:
+      - /mnt/thinktank/research-stack/zotero-pdfs:/zotero-pdfs:ro,z
+      - /mnt/thinktank/research-stack/vector-store:/vector-store:z
+    ports:
+      - "4100:4100"
+    networks:
+      - research_net
+      - ai_net
+
+networks:
+  research_net:
+    driver: bridge
+
+  ai_net:
+    external: true
