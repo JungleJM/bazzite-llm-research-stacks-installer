@@ -3,29 +3,36 @@ set -euo pipefail
 
 IMAGE_NAME="bazzite-comfyui-rocm"
 CONTAINER_NAME="comfyui-rocm"
-HOST_COMFY_DIR="/home/j/ai/comfyui"
-HOST_MODELS_DIR="/home/j/ai/models"
 HOST_PORT="8188"
 CONTAINER_PORT="8188"
 
-mkdir -p "${HOST_COMFY_DIR}" "${HOST_MODELS_DIR}"
+# Host locations
+HOST_COMFY_DIR="${HOME}/ai/comfyui"
+THINKTANK="${HOME}/thinktank"
 
-# Optional: clone ComfyUI into HOST_COMFY_DIR if not already present
+CHECKPOINTS_DIR="${THINKTANK}/comfyui/checkpoints"
+LORAS_DIR="${THINKTANK}/comfyui/loras"
+VAE_DIR="${THINKTANK}/comfyui/vae"
+
+mkdir -p "${HOST_COMFY_DIR}" \
+         "${CHECKPOINTS_DIR}" \
+         "${LORAS_DIR}" \
+         "${VAE_DIR}"
+
+# Clone ComfyUI repo into HOST_COMFY_DIR if not present
 if [ ! -d "${HOST_COMFY_DIR}/.git" ] && [ ! -f "${HOST_COMFY_DIR}/main.py" ]; then
   echo "ComfyUI not found in ${HOST_COMFY_DIR}, cloning..."
   git clone https://github.com/comfyanonymous/ComfyUI.git "${HOST_COMFY_DIR}"
 fi
 
-# Common ROCm env vars for RDNA3 (7800XT may need override)
-# Uncomment and tune if needed:
-# export HSA_OVERRIDE_GFX_VERSION=11.0.0
-
-# Ensure container exists/build image
+# Build image if missing
 if ! podman image exists "${IMAGE_NAME}"; then
-  ./build-container.sh
+  "$(dirname "$0")/build-container.sh"
 fi
 
-# Run container, mapping AMD GPU and dirs
+# Optional ROCm tweak for RDNA3 (uncomment and tune if needed)
+# export HSA_OVERRIDE_GFX_VERSION=11.0.0
+
 podman run --rm -it \
   --name "${CONTAINER_NAME}" \
   --device /dev/kfd \
@@ -33,6 +40,8 @@ podman run --rm -it \
   --group-add keep-groups \
   -e ROC_ENABLE_PRE_VEGA=1 \
   -v "${HOST_COMFY_DIR}:/opt/comfyui:Z" \
-  -v "${HOST_MODELS_DIR}:/models:Z" \
+  -v "${CHECKPOINTS_DIR}:/opt/comfyui/models/checkpoints:Z" \
+  -v "${LORAS_DIR}:/opt/comfyui/models/loras:Z" \
+  -v "${VAE_DIR}:/opt/comfyui/models/vae:Z" \
   -p "${HOST_PORT}:${CONTAINER_PORT}" \
   "${IMAGE_NAME}"

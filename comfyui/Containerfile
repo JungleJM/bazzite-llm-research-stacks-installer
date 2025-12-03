@@ -1,12 +1,10 @@
-# Minimal Fedora base; tweak tag if you want pinned version
 FROM registry.fedoraproject.org/fedora:latest
 
-# Environment for non-root user
 ARG USERNAME=user
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-# Install dependencies for ComfyUI and ROCm userland
+# Install dependencies (inside container only)
 RUN dnf -y update && \
     dnf -y install \
         python3 \
@@ -31,36 +29,24 @@ RUN dnf -y update && \
         libdrm \
         libjpeg-turbo \
         zlib \
-        # ROCm userland libs (names may evolve; adjust as needed)
-        rocm-hip-runtime \
-        rocm-hip-libraries \
-        rocm-hip-devel \
-        rocm-device-libs \
-        rocm-smi \
-        rocblas \
-        rocminfo \
-        # convenience tools
         git-core \
         which \
-        procps-ng \
-        && dnf clean all
+        procps-ng && \
+    dnf clean all
 
-# Add a non-root user matching the host UID/GID
+# Create user and ComfyUI dir as root
 RUN groupadd --gid ${USER_GID} ${USERNAME} && \
-    useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME}
+    useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME} && \
+    mkdir -p /opt/comfyui && \
+    chown ${USER_UID}:${USER_GID} /opt/comfyui
 
 USER ${USERNAME}
 WORKDIR /home/${USERNAME}
 
-# Create ComfyUI directory inside container (will be bind-mounted)
-RUN mkdir -p /opt/comfyui
-
-# Default environment; adjust for 7800XT as needed
-# NOTE: you may need to set HSA_OVERRIDE_GFX_VERSION in run script instead.
+# Default environment; tune if needed
 ENV ROC_ENABLE_PRE_VEGA=1
 
-# Entrypoint: if venv not present, create and install requirements
-# Expect ComfyUI repo mounted at /opt/comfyui
+# Entrypoint: create venv if missing, install deps, then run ComfyUI
 ENTRYPOINT ["/bin/bash", "-lc", "\
   if [ ! -d /opt/comfyui ]; then \
       echo 'ERROR: /opt/comfyui is not mounted. Bind your ComfyUI dir.' >&2; \
@@ -75,7 +61,6 @@ ENTRYPOINT ["/bin/bash", "-lc", "\
       if [ -f requirements.txt ]; then \
           pip install -r requirements.txt; \
       else \
-          # Fallback minimal deps; adjust if you keep a curated list in repo
           pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.0; \
           pip install -r requirements.txt || true; \
       fi; \

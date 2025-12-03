@@ -7,6 +7,7 @@ AI_STACK_DIR="${REPO_ROOT}/ai-stack"
 RESEARCH_STACK_DIR="${REPO_ROOT}/research-stack"
 COMFY_DIR="${REPO_ROOT}/comfyui"
 
+# NOTE: This project uses /mnt/thinktank as the shared storage root
 THINKTANK="/mnt/thinktank"
 CURRENT_USER="${SUDO_USER:-$USER}"
 
@@ -50,55 +51,4 @@ if [ ! -f "${ENV_FILE}" ]; then
   cat > "${ENV_FILE}" <<EOF_ENV
 POSTGRESPASSWORD=${POSTGRESPASSWORD}
 PYTHONPOSTGRESPASSWORD=${PYTHONPOSTGRESPASSWORD}
-RSTUDIOPASSWORD=${RSTUDIOPASSWORD}
-JUPYTERTOKEN=${JUPYTERTOKEN}
-PGADMINEMAIL=${PGADMINEMAIL}
-PGADMINPASSWORD=${PGADMINPASSWORD}
-LITELLMMASTERKEY=${LITELLMMASTERKEY}
-EOF_ENV
-
-  echo "[*] Created ${ENV_FILE}"
-else
-  echo "[*] Using existing ${ENV_FILE}"
-fi
-
-echo "[*] Installing ComfyUI setup script..."
-sudo install -Dm755 "${COMFY_DIR}/setup-comfyui.sh" /usr/local/sbin/setup-comfyui.sh
-
-echo "[*] Rendering comfyui.service for current user (${CURRENT_USER})..."
-TMP_SERVICE="/tmp/comfyui.service.$$"
-sed "s/YOUR_BAZZITE_USER/${CURRENT_USER}/" "${COMFY_DIR}/comfyui.service" > "${TMP_SERVICE}"
-
-echo "[*] Installing comfyui.service..."
-sudo install -Dm644 "${TMP_SERVICE}" /etc/systemd/system/comfyui.service
-rm -f "${TMP_SERVICE}"
-
-echo "[*] Running ComfyUI setup script (may take a while on first run)..."
-sudo /usr/local/sbin/setup-comfyui.sh
-
-echo "[*] Enabling ComfyUI service..."
-sudo systemctl daemon-reload
-sudo systemctl enable --now comfyui.service
-
-echo "[*] Ensuring Podman network 'ai_net' exists..."
-if ! podman network inspect ai_net >/dev/null 2>&1; then
-  podman network create ai_net
-fi
-
-echo "[*] Bringing up AI stack via podman compose..."
-cd "${AI_STACK_DIR}"
-podman compose -f podman-compose.ai.yml up -d
-
-echo "[*] Bringing up research stack via podman compose..."
-cd "${RESEARCH_STACK_DIR}"
-podman compose -f podman-compose.research.yml --env-file .env up -d
-
-echo
-echo "[*] Installation complete."
-echo "    - ComfyUI: http://den-baz:8188"
-echo "    - Open WebUI: http://den-baz:3000"
-echo "    - LiteLLM proxy: http://den-baz:4000"
-echo "    - PaperQA2: http://den-baz:4100 (placeholder)"
-echo "    - RStudio: http://den-baz:8787"
-echo "    - JupyterLab: http://den-baz:8888"
-echo "    - pgAdmin: http://den-baz:5050"
+RSTUDIOPASSWORD
