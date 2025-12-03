@@ -1,0 +1,87 @@
+# Minimal Fedora base; tweak tag if you want pinned version
+FROM registry.fedoraproject.org/fedora:latest
+
+# Environment for non-root user
+ARG USERNAME=user
+ARG USER_UID=1000
+ARG USER_GID=1000
+
+# Install dependencies for ComfyUI and ROCm userland
+RUN dnf -y update && \
+    dnf -y install \
+        python3 \
+        python3-pip \
+        python3-virtualenv \
+        git \
+        gcc \
+        gcc-c++ \
+        make \
+        cmake \
+        mesa-libGL \
+        mesa-libEGL \
+        libX11 \
+        libXext \
+        libXrender \
+        libXrandr \
+        libXcursor \
+        libXfixes \
+        libXi \
+        libXinerama \
+        libXxf86vm \
+        libdrm \
+        libjpeg-turbo \
+        zlib \
+        # ROCm userland libs (names may evolve; adjust as needed)
+        rocm-hip-runtime \
+        rocm-hip-libraries \
+        rocm-hip-devel \
+        rocm-device-libs \
+        rocm-smi \
+        rocblas \
+        rocminfo \
+        # convenience tools
+        git-core \
+        which \
+        procps-ng \
+        && dnf clean all
+
+# Add a non-root user matching the host UID/GID
+RUN groupadd --gid ${USER_GID} ${USERNAME} && \
+    useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME}
+
+USER ${USERNAME}
+WORKDIR /home/${USERNAME}
+
+# Create ComfyUI directory inside container (will be bind-mounted)
+RUN mkdir -p /opt/comfyui
+
+# Default environment; adjust for 7800XT as needed
+# NOTE: you may need to set HSA_OVERRIDE_GFX_VERSION in run script instead.
+ENV ROC_ENABLE_PRE_VEGA=1
+
+# Entrypoint: if venv not present, create and install requirements
+# Expect ComfyUI repo mounted at /opt/comfyui
+ENTRYPOINT ["/bin/bash", "-lc", "\
+  if [ ! -d /opt/comfyui ]; then \
+      echo 'ERROR: /opt/comfyui is not mounted. Bind your ComfyUI dir.' >&2; \
+      exit 1; \
+  fi; \
+  cd /opt/comfyui; \
+  if [ ! -d venv ]; then \
+      echo 'Creating Python venv and installing dependencies...'; \
+      python3 -m venv venv; \
+      source venv/bin/activate; \
+      pip install --upgrade pip; \
+      if [ -f requirements.txt ]; then \
+          pip install -r requirements.txt; \
+      else \
+          # Fallback minimal deps; adjust if you keep a curated list in repo
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm6.0; \
+          pip install -r requirements.txt || true; \
+      fi; \
+  else \
+      source venv/bin/activate; \
+  fi; \
+  echo 'Starting ComfyUI on 0.0.0.0:8188...'; \
+  python main.py --listen 0.0.0.0 --port 8188 \
+"]
